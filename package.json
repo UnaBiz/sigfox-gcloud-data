@@ -1,0 +1,58 @@
+{
+  "name": "sigfox-gcloud-ubidots",
+  "version": "1.0.1",
+  "description": "sigfox-gcloud adapter for integrating Sigfox devices with Ubidots",
+  "main": "index.js",
+  "scripts": {
+    "deploy": "scripts/deployall.sh",
+    "test": "node test"
+  },
+  "keywords": [
+    "sigfox",
+    "ubidots",
+    "gcloud",
+    "functions",
+    "google",
+    "cloud",
+    "functions",
+    "iot"
+  ],
+  "author": {
+    "name": "Lee Lup Yuen",
+    "email": "ly.lee@unabiz.com",
+    "url": "http://github.com/unabiz/"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=7.8.0"
+  },
+  "dependencies": {
+    "@google-cloud/debug-agent": "^2.1.3",
+    "@google-cloud/error-reporting": "^0.2.2",
+    "@google-cloud/logging": "^1.0.6",
+    "@google-cloud/pubsub": "0.14.4",
+    "@google-cloud/trace-agent": "^2.2.0",
+    "googleapis": "^22.2.0",
+    "dnscache": "^1.0.1",
+    "json-stringify-safe": "^5.0.1",
+    "node-fetch": "^1.6.3",
+    "safe-buffer": "5.0.1",
+    "sigfox-gcloud": ">=1.0.0",
+    "ubidots": "UnaBiz/ubidots-node"
+  },
+  "devDependencies": {
+    "chai": "^3.5.0",
+    "chai-as-promised": "^6.0.0",
+    "should": "^11.2.1",
+    "supertest-as-promised": "^4.0.2",
+    "supertest": "^3.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/UnaBiz/sigfox-gcloud-ubidots.git"
+  },
+  "bugs": {
+    "url": "https://github.com/UnaBiz/sigfox-gcloud-ubidots/issues"
+  },
+  "homepage": "https://github.com/UnaBiz/sigfox-gcloud-ubidots#readme"
+}
