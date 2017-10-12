@@ -29,11 +29,11 @@ const knex = require('knex');
 const dbconfig = {
   client: 'mysql',
   connection: {
-    host : '127.0.0.1',
-    user : 'your_database_user',
-    password : 'your_database_password',
-    database : 'myapp_test'
-  }
+    host : '???',
+    user : 'user',
+    password : '???',
+    database : 'sigfox',
+  },
 };
 const dbconfig2 = {
   client: 'pg',
@@ -42,10 +42,33 @@ const dbconfig2 = {
     host : '127.0.0.1',
     user : 'your_database_user',
     password : 'your_database_password',
-    database : 'myapp_test'
-  }
+    database : 'myapp_test',
+  },
 };
 const db = knex(dbconfig);
+
+const serviceName = 'sensorrecorder';
+const name = 'sensordata';
+const id = 'id';
+const events = null;
+const paginate = null;
+
+db.schema.createTable(name, table => {
+  console.log(`Creating table ${name}`);
+  table.increments(id);
+  table.string('text');
+});
+
+/*
+sigfox-dbclient	mysql
+sigfox-dbhost	127.0.0.1
+sigfox-dbname
+sigfox-dbpassword
+sigfox-dbtable
+sigfox-dbuser
+sigfox-dbversion
+sigfox-dbid
+*/
 
 function wrap() {
   //  Wrap the module into a function so that all Google Cloud resources are properly disposed.
@@ -55,25 +78,15 @@ function wrap() {
   const errorHandler = require('feathers-errors/handler');
 
   const Model = db;
-  const name = 'sensordata';
-  const id = 'id';
-  const events = null;
-  const paginate = null;
   const app = feathers()
-    .use('/sensordata', service({ Model, name, id, events, paginate }))
+    .use(`/${serviceName}`, service({ Model, name, id, events, paginate }))
     .use(errorHandler());
 
   function task(req, device, body, msg) {
-
-    app.service('sensordata').create({
+    return app.service(serviceName).create({
       text: 'Message created on server',
-    }).then(message => console.log('Created message', message));
-
-
-    return users.find()
-          .then(results => console.log('find all items\n', results));
-      })
-      .catch(err => console.log('Error occurred:', err))
+    })
+      .then(message => console.log('Created message', message))
       //  Return the message for the next processing step.
       .then(() => msg)
       .catch((error) => { sgcloud.log(req, 'task', { error, device, body, msg }); throw error; });
