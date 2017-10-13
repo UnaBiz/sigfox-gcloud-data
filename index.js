@@ -17,7 +17,9 @@ if (process.env.FUNCTION_NAME) {
   require('@google-cloud/trace-agent').start();
   require('@google-cloud/debug-agent').start();
 }
+//  We use Feathers and the KNEX library to support many types of databases.
 const knex = require('knex');
+let db = null;  //  Instance of the KNEX library.
 
 //  End Common Declarations
 //  //////////////////////////////////////////////////////////////////////////////////////////
@@ -39,15 +41,6 @@ const metadataKeys = {   //  Keys we use and their default values, before prepen
 };
 //  Name of Feathers service.
 const serviceName = 'sensorrecorder';
-
-
-const db = knex(dbconfig);
-
-db.schema.createTable(metadataKeys.table, (table) => {
-  console.log(`Creating table ${metadataKeys.table}`);
-  table.increments(metadataKeys.id);
-  table.string('text');
-});
 
 function wrap() {
   //  Wrap the module into a function so that all Google Cloud resources are properly disposed.
@@ -113,6 +106,8 @@ function wrap() {
         };
         //  Set the version for Postgres.
         if (metadata.version) dbconfig.version = metadata.version;
+        //  Create the KNEX instance for accessing the database.
+        db = knex(dbconfig);
         return dbconfig;
       })
       .catch((error) => {
@@ -121,24 +116,58 @@ function wrap() {
       });
   }
 
+  function createTable(req) {
+    //  Create the sensordata table if it doesn't exist.
+    //  Returns a promise.
+    return getDatabaseConfig(req)
+      .then(() => {
+        return db.schema.createTable(metadataKeys.table, (table) => {
+          console.log(`Creating table ${metadataKeys.table}`);
+          table.increments(metadataKeys.id);
+          table.string('text');
+        });
+      })
+      .catch((error) => {
+        sgcloud.log(req, 'createTable', { error });
+        throw error;
+      });
+  }
+
   //  Feathers service for accessing the database.
-  let app = null;
+  let servicePromise = null;
 
   function createService(req) {
-    const Model = db;
-    const name = metadataKeys.table;
-    const id = metadataKeys.id;
-    const events = null;
-    const paginate = null;
-    app = feathers()
-      .use(`/${serviceName}`, service({ Model, name, id, events, paginate }))
-      .use(errorHandler());
+    //  Create the Feathers service that will provide database access.
+    //  Returns a promise.
+    if (servicePromise) return servicePromise;
+    servicePromise = getDatabaseConfig(req)
+      .then(() => {
+        const Model = db;
+        const name = metadataKeys.table;
+        const id = metadataKeys.id;
+        const events = null;
+        const paginate = null;
+        const app = feathers()
+          .use(`/${serviceName}`, service({ Model, name, id, events, paginate }))
+          .use(errorHandler());
+        return app;
+      })
+      .catch((error) => {
+        sgcloud.log(req, 'createService', { error });
+        throw error;
+      });
+    return servicePromise;
   }
 
   function task(req, device, body, msg) {
-    return app.service(serviceName).create({
-      text: 'Message created on server',
-    })
+    let app = null;
+    return createService(req)
+      .then((res) => { app = res; })
+      .then(() => {
+        return app.service(serviceName).create({
+          text: 'Message created on server',
+        });
+      })
       .then(message => console.log('Created message', message))
       //  Return the message for the next processing step.
       .then(() => msg)
