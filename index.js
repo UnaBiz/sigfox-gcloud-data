@@ -181,6 +181,7 @@ function wrap() {
 
     //  For unit test only.
     task,
+    createTable,
   };
 }
 
@@ -209,9 +210,5 @@ module.exports = {
 
   //  For unit test only.
   task: wrap().task,
-  loadDevicesByClient: wrap().loadDevicesByClient,
-  getVariablesByDevice: wrap().getVariablesByDevice,
-  setVariables: wrap().setVariables,
-  mergeDevices: wrap().mergeDevices,
-  allKeys,
+  createTable: wrap().createTable,
 };
