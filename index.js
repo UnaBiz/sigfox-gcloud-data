@@ -41,34 +41,34 @@ const metadataKeys = {   //  Keys we use and their default values, before prepen
   id: 'uuid',            //  Name of the ID field in the table e.g. uuid
 };
 
-//  Default fields to be recorded in sensordata table.
+//  Default fields to be created in sensordata table.
 const sensorfields = (tbl) => ({
-  uuid: tbl.uuid,  //  Unique message ID in UUID format.
-  timestamp: tbl.timestamp,  //  Timestamp of message receipt at basestation.
+  uuid: [tbl.uuid, 'Primary key: Unique message ID in UUID format, e.g. 4cf3ad36-3d3e-415c-a25b-9f8ab2bb4466'],
+  timestamp: [tbl.timestamp, 'Timestamp of message receipt at basestation., e.g. 1507798768000'],
 
-  alt: tbl.float,  //  Altitude in metres above sea level, used by send-alt-structured demo.
-  avgSnr: tbl.float,  //  Sigfox average signal-to-noise ratio.
-  baseStationLat: tbl.float,  //  Sigfox basestation latitude.  Usually truncated to 0 decimal points.
-  baseStationLng: tbl.float,  //  Sigfox basestation longitude.  Usually truncated to 0 decimal points.
-  baseStationTime: tbl.integer,  //  Sigfox timestamp of message receipt at basestation, in seconds since epoch (1/1/1970).
-  callbackTimestamp: tbl.integer,  //  Timestamp at which sigfoxCallback was called.
-  data: tbl.string,  //  Sigfox message data.
-  datetime: tbl.string,  //  Human-readable datetime.
-  device: tbl.string,  //  Sigfox device ID.
-  deviceLat: tbl.float,  //  Latitude of GPS tracker e.g. UnaTumbler.
-  deviceLng: tbl.float,  //  Longitude of GPS tracker e.g. UnaTumbler.
-  duplicate: tbl.boolean,  //  Sigfox sets to false if this is the first message received among all basestations.
-  geolocLat: tbl.float,  //  Sigfox Geolocation latitude of device.
-  geolocLng: tbl.float,  //  Sigfox Geolocation longitude of device.
-  geolocLocationAccuracy: tbl.float,  //  Sigfox Geolocation accuracy of device.
-  hmd: tbl.float,  //  % Humidity, used by send-alt-structured demo.
-  lat: tbl.float,  //  Latitude for rendering in Ubidots.
-  lng: tbl.float,  //  Longitude for rendering in Ubidots.
-  rssi: tbl.float,  //  Sigfox signal strength.
-  seqNumber: tbl.integer,  //  Sigfox message sequence number.
-  snr: tbl.float,  //  Sigfox message signal-to-noise ratio.
-  station: tbl.string,  //  Sigfox basestation ID.
-  tmp: tbl.float,  //  Temperature in degrees Celsius, used by send-alt-structured demo.
+  alt: [tbl.float, 'Altitude in metres above sea level, used by send-alt-structured demo, e.g. 86.4'],
+  avgSnr: [tbl.float, 'Sigfox average signal-to-noise ratio, e.g. 59.84'],
+  baseStationLat: [tbl.float, 'Sigfox basestation latitude.  Usually truncated to 0 decimal points, e.g. 1'],
+  baseStationLng: [tbl.float, 'Sigfox basestation longitude.  Usually truncated to 0 decimal points, e.g. 104'],
+  baseStationTime: [tbl.integer, 'Sigfox timestamp of message receipt at basestation, in seconds since epoch (1/1/1970), e.g. 1507798768'],
+  callbackTimestamp: [tbl.integer, 'Timestamp at which sigfoxCallback was called, e.g. 1507798769710'],
+  data: [tbl.string, 'Sigfox message data, e.g. b0510001a421f90194056003'],
+  datetime: [tbl.string, 'Human-readable datetime, e.g. 2017-10-12 08:59:29'],
+  device: [tbl.string, 'Sigfox device ID, e.g. 2C1C85'],
+  deviceLat: [tbl.float, 'Latitude of GPS tracker e.g. UnaTumbler.'],
+  deviceLng: [tbl.float, 'Longitude of GPS tracker e.g. UnaTumbler.'],
+  duplicate: [tbl.boolean, 'Sigfox sets to false if this is the first message received among all basestations.'],
+  geolocLat: [tbl.float, 'Sigfox Geolocation latitude of device.'],
+  geolocLng: [tbl.float, 'Sigfox Geolocation longitude of device.'],
+  geolocLocationAccuracy: [tbl.float, 'Sigfox Geolocation accuracy of device.'],
+  hmd: [tbl.float, '% Humidity, used by send-alt-structured demo, e.g. 50.5'],
+  lat: [tbl.float, 'Latitude for rendering in Ubidots.'],
+  lng: [tbl.float, 'Longitude for rendering in Ubidots.'],
+  rssi: [tbl.float, 'Sigfox signal strength, e.g. -122'],
+  seqNumber: [tbl.integer, 'Sigfox message sequence number, e.g. 2426'],
+  snr: [tbl.float, 'Sigfox message signal-to-noise ratio, e.g. 21.61'],
+  station: [tbl.string, 'Sigfox basestation ID, e.g. 2464'],
+  tmp: [tbl.float, 'Temperature in degrees Celsius, used by send-alt-structured demo, e.g. 25.6'],
 });
 
 //  Name of Feathers service.
@@ -167,16 +167,24 @@ function wrap() {
         id = metadata.id;
         sgcloud.log(req, 'createTable', { table, id });
         return db.schema.createTable(table, (tbl) => {
+          //  Create each field found in sensorfields.
           const fields = sensorfields(tbl);
           for (const fieldName of Object.keys(fields)) {
-            const fieldTypeFunc = fields[fieldName];
+            const field = fields[fieldName];
+            const fieldTypeFunc = field[0];
+            const fieldComment = field[1];
             if (!fieldTypeFunc) {
               const error = new Error(`Unknown field type for ${fieldName}`);
               sgcloud.error(req, 'createTable', { error });
               continue;
             }
-            fieldTypeFunc.bind(tbl)(fieldName);
+            //  Invoke the column builder function.
+            const col = fieldTypeFunc.bind(tbl)(fieldName);
+            col.comment(fieldComment);
+            //  If id field, set as primary field.
+            if (fieldName === id) col.primary();
           }
+          //  Add the created_at and updated_at fields.
           tbl.timestamps(true, true);
         });
       })
@@ -228,6 +236,7 @@ function wrap() {
       .then(() => {
         //  Create the record through Feathers and KNEX.
         return app.service(serviceName).create({
+          uuid: '4cf3ad36-3d3e-415c-a25b-9f8ab2bb4466',
           station: '0000',
         });
       })
