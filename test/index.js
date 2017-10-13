@@ -5,18 +5,19 @@
 const chai = require('chai');
 const chaiAsPromised = require('chai-as-promised');
 const common = require('sigfox-gcloud');
+const knex = require('knex');
 const moduleTested = require('../index');  //  Module to be tested, i.e. the parent module.
 
 const moduleName = 'sendToDatabase';
 const should = chai.should();
 chai.use(chaiAsPromised);
 let req = {};
+let testMetadata = null;
+let testDatabaseConfig = null;
+let testDB = null;
 
 /* eslint-disable quotes, max-len */
-//  Test data: Send sensor data to these 2 device IDs from 2 different Ubidots accounts.
-//  Assume that 'Sigfox Device 2C30EA' and 'Sigfox Device 2C30EB' have been created
-//  in the first and second accounts respectively.
-const testDevice1 = '2C30EA';
+const testDevice1 = 'UNITTEST1';
 
 const testData = {  //  Structured msgs with numbers and text fields.
   number: '920e06272731741db051e600',
@@ -86,11 +87,86 @@ describe(moduleName, () => {
     req = { unittest: true };
   });
 
+  it('should get config from metadata', () => {
+    //  Get the config from Google Compute Metadata.
+    const promise = moduleTested.getMetadataConfig(req,
+      moduleTested.metadataPrefix,
+      moduleTested.metadataKeys)
+      .then((result) => {
+        common.log(req, 'unittest', { result });
+        testMetadata = result;
+        return result;
+      })
+      .catch((error) => {
+        common.error(req, 'unittest', { error });
+        throw error;
+      })
+    ;
+    return Promise.all([
+      promise,
+    ]);
+  });
+
+  it('should get database config', () => {
+    //  Get the database config from Google Compute Metadata.
+    const promise = moduleTested.getDatabaseConfig(req)
+      .then((result) => {
+        common.log(req, 'unittest', { result });
+        testDatabaseConfig = result;
+        testDB = knex(testDatabaseConfig);
+        return result;
+      })
+      .catch((error) => {
+        common.error(req, 'unittest', { error });
+        throw error;
+      })
+    ;
+    return Promise.all([
+      promise,
+    ]);
+  });
+
+  it('should delete sensor table', () => {
+    //  Delete the sensor table.
+    const promise = testDB.schema.dropTableIfExists(testMetadata.table)
+      .then((result) => {
+        common.log(req, 'unittest', { result });
+        return result;
+      })
+      .catch((error) => {
+        common.error(req, 'unittest', { error });
+        throw error;
+      })
+    ;
+    return Promise.all([
+      promise,
+    ]);
+  });
+
   it('should create sensor table', () => {
-    //  Create the sensor table if it doesn't exist.
-    const testDevice = testDevice1;
-    common.log(req, 'unittest', { testDevice });
+    //  Create the sensordata table.
     const promise = moduleTested.createTable(req)
+      .then((result) => {
+        common.log(req, 'unittest', { result });
+        return result;
+      })
+      .catch((error) => {
+        common.error(req, 'unittest', { error });
+        throw error;
+      })
+    ;
+    return Promise.all([
+      promise,
+    ]);
+  });
+
+  it('should record sensor data', () => {
+    //  Create a new record in the sensordata table.
+    const testDevice = testDevice1;
+    const msg = getTestMessage('number', testDevice);
+    const body = msg.body;
+    common.log(req, 'unittest', { testDevice, body, msg });
+    const promise = moduleTested.task(req, testDevice, body, msg)
       .then((result) => {
         common.log(req, 'unittest', { result });
         return result;
