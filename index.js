@@ -51,7 +51,7 @@ const sensorfields = (tbl) => ({
   baseStationLat: tbl.float,  //  Sigfox basestation latitude.  Usually truncated to 0 decimal points.
   baseStationLng: tbl.float,  //  Sigfox basestation longitude.  Usually truncated to 0 decimal points.
   baseStationTime: tbl.integer,  //  Sigfox timestamp of message receipt at basestation, in seconds since epoch (1/1/1970).
-  callbackTimestamp: tbl.timestamp,  //  Timestamp at which sigfoxCallback was called.
+  callbackTimestamp: tbl.integer,  //  Timestamp at which sigfoxCallback was called.
   data: tbl.string,  //  Sigfox message data.
   datetime: tbl.string,  //  Human-readable datetime.
   device: tbl.string,  //  Sigfox device ID.
@@ -169,13 +169,13 @@ function wrap() {
         return db.schema.createTable(table, (tbl) => {
           const fields = sensorfields(tbl);
           for (const fieldName of Object.keys(fields)) {
-            const fieldType = fields[fieldName];
-            if (!fieldType) {
+            const fieldTypeFunc = fields[fieldName];
+            if (!fieldTypeFunc) {
               const error = new Error(`Unknown field type for ${fieldName}`);
               sgcloud.error(req, 'createTable', { error });
               continue;
             }
-            fieldType(fieldName);
+            fieldTypeFunc.bind(tbl)(fieldName);
           }
           tbl.timestamps(true, true);
         });
