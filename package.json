@@ -1,7 +1,7 @@
 {
   "name": "sigfox-gcloud-data",
-  "version": "1.0.1",
-  "description": "sigfox-gcloud adapter for writing Sigfox into databases",
+  "version": "1.0.0",
+  "description": "sigfox-gcloud adapter for writing Sigfox messages into databases",
   "main": "index.js",
   "scripts": {
     "deploy": "scripts/deployall.sh",
@@ -11,6 +11,8 @@
     "sigfox",
     "mysql",
     "postgres",
+    "mssql",
+    "oracle",
     "knex",
     "gcloud",
     "functions",

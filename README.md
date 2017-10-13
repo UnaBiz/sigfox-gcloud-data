@@ -1,63 +1,45 @@
-**sigfox-gcloud-ubidots** is a [`sigfox-gcloud`](https://www.npmjs.com/package/sigfox-gcloud) adapter for integrating Sigfox devices with Ubidots.
-With `sigfox-gcloud-ubidots` you may **process and render sensor
-data** from your Sigfox devices in real time, through the
-**Ubidots and Google Cloud platforms.**  You may also configure
-Ubidots alerts to notify you via email and SMS based on
-the sensor data received.
+**sigfox-gcloud-data** is a [`sigfox-gcloud`](https://www.npmjs.com/package/sigfox-gcloud) 
+adapter for writing Sigfox messages into SQL databases like MySQL and Postgres.
 
-`sigfox-gcloud` is an open-source software framework for building a
+You may read and update Sigfox messages with other modules (such as 
+[`sigfox-gcloud-ubidots`](https://www.npmjs.com/package/sigfox-gcloud-ubidots))
+before passing to `sigfox-gcloud-data` for writing to the database.
+`sigfox-gcloud-data` works with most SQL databases supported by 
+[Knex.js](http://knexjs.org/)
+like **Postgres, MSSQL, MySQL, MariaDB, SQLite3 and Oracle.**
+
+`sigfox-gcloud-data` was built with `sigfox-gcloud`, an open-source software framework for building a
 Sigfox server with Google Cloud Functions and Google Cloud PubSub 
 message queues.  [Check out `sigfox-gcloud`](https://www.npmjs.com/package/sigfox-gcloud)
 
-[<kbd><img src="https://storage.googleapis.com/unabiz-media/sigfox-gcloud/ubidots-dashboard.jpg" width="800"></kbd>](https://storage.googleapis.com/unabiz-media/sigfox-gcloud/ubidots-dashboard.png)
-
 # Releases
 
-- **Version 1.0.0** (11 Oct 2017): Supports **Google Cloud Trace** for tracing the Sigfox Callback processing time
-  across Cloud Functions.  Supports **Google Cloud Debug** for capturing Node.js memory snapshots.
-  Supports **Ubidots map visualisation** of Sigfox Geolocation and other geolocated sensor data points.
+- **Version 1.0.0** (14 Oct 2017): First release
 
 # Getting Started
 
 For development we support Linux, MacOS and [Ubuntu on Windows 10](https://msdn.microsoft.com/en-us/commandline/wsl/about).
-Open a command prompt and enter these commands to download the `sigfox-cloud-ubidots` source folder to your computer.  
+Open a command prompt and enter these commands to download the `sigfox-cloud-data` source folder to your computer.  
 
 ```bash
-git clone https://github.com/UnaBiz/sigfox-gcloud-ubidots.git
-cd sigfox-gcloud-ubidots
+git clone https://github.com/UnaBiz/sigfox-gcloud-data.git
+cd sigfox-gcloud-data
 ```
 
 If you're using Ubuntu on Windows 10, we recommend that you launch "Bash on Ubuntu on Windows" and enter the following
-commands to download the source files into the folder `/mnt/c/sigfox-gcloud-ubidots`:
+commands to download the source files into the folder `/mnt/c/sigfox-gcloud-data`:
 
 ```bash
 cd /mnt/c
-git clone https://github.com/UnaBiz/sigfox-gcloud-ubidots.git
-cd sigfox-gcloud-ubidots
+git clone https://github.com/UnaBiz/sigfox-gcloud-data.git
+cd sigfox-gcloud-data
 ```
 
-That's because `/mnt/c/sigfox-gcloud-ubidots` under `bash` is a shortcut to `c:\sigfox-gcloud-ubidots` under Windows.  
+That's because `/mnt/c/sigfox-gcloud-data` under `bash` is a shortcut to `c:\sigfox-gcloud-data` under Windows.  
 So you could use Windows Explorer and other Windows tools to browse and edit files in the folder.
 Remember to use a text editor like Visual Studio Code that can save files using 
 the Linux line-ending convention (linefeed only: `\n`), 
 instead of the Windows convention (carriage return + linefeed: `\r \n`).
-
-Create a file named `config.json` in the `sigfox-gcloud-ubidots` folder 
-with the contents below (replace `YOUR_UBIDOTS_API_KEY` by your 
-[Ubidots API Key](https://ubidots.com/docs/api/#authentication))
-
-```json
-{
-  "comment": "Configuration file for Ubidots adapter for sigfox-gcloud",
-  "ubidots-api-key": "YOUR_UBIDOTS_API_KEY"
-}
-```
-
-To use multiple Ubidots accounts, combine the API keys from each account with a comma:
-
-```json
-  "ubidots-api-key": "YOUR_UBIDOTS_API_KEY1,YOUR_UBIDOTS_API_KEY2"
-```
 
 ### Setting up Google Cloud
 
@@ -65,25 +47,71 @@ To use multiple Ubidots accounts, combine the API keys from each account with a 
 
     https://github.com/UnaBiz/sigfox-gcloud/blob/master/README.md
 
-1.  Add the following `sigfox-route` setting to the Google Cloud Project Metadata store.
-    This route says that all received Sigfox messages will be processed by the
-    two steps `decodeStructuredMessage` and `sendToUbidots`.
+1. Open a bash command prompt.  For Windows, open "Bash on Ubuntu on Windows."  
+    Create a file named `.env` in the `sigfox-gcloud-data` folder  
+    and populate the `GCLOUD_PROJECT` variable with your project ID.
+     To do that, you may use this command (change `myproject` to your project ID):
 
     ```bash
-    gcloud compute project-info add-metadata --metadata=^:^sigfox-route=decodeStructuredMessage,sendToUbidots
+    cd sigfox-gcloud-data
+    echo GCLOUD_PROJECT=myproject >.env
+    ```
+
+1.  Add the following `sigfox-route` setting to the Google Cloud Project Metadata store.
+    This route says that all received Sigfox messages will be processed by the
+    two steps `decodeStructuredMessage` and `sendToDatabase`.
+
+    ```bash
+    gcloud compute project-info add-metadata --metadata=^:^sigfox-route=decodeStructuredMessage,sendToDatabase
+    ```
+    
+    If you're using `sigfox-gcloud-ubidots`, the `sendToDatabase` step should appear
+    last so that the updates from `sendToUbidots` will be recorded in the database.
+
+    ```bash
+    gcloud compute project-info add-metadata --metadata=^:^sigfox-route=decodeStructuredMessage,sendToUbidots,sendToDatabase
     ```
 
 1. Create the Google PubSub message queue that we will use to route the
    Sigfox messages between the Cloud Functions:
    
     ```bash
-    gcloud beta pubsub topics create sigfox.types.sendToUbidots
+    gcloud beta pubsub topics create sigfox.types.sendToDatabase
     ```
     
-    `sigfox.devices.sendToUbidots` is the queue that will receive decoded Sigfox messages
-    to be sent to Ubidots via the Ubidots API   
+    `sigfox.devices.sendToDatabase` is the queue that will receive decoded Sigfox messages
+    to be sent to data via the data API   
+
+1. Go to the Google Cloud Metadata screen to define your database settings:
+
+    https://console.cloud.google.com/compute/metadata
     
-1. Deploy all the included Cloud Functions (including the demo functions) with the `deployall.sh` script:
+    [<kbd><img src="https://storage.googleapis.com/unabiz-media/sigfox-gcloud/data-metadata.png" width="640"></kbd>](https://storage.googleapis.com/unabiz-media/sigfox-gcloud/data-metadata.png)
+
+    - `sigfox-dbclient`: Database client library to be used e.g `mysql`, `pg`. 
+    Check this page for the library: http://knexjs.org/#Installation-node
+    - `sigfox-dbhost`: Address of database server e.g. `127.127.127.127`
+    - `sigfox-dbuser`: User ID for accessing the database e.g. `user`
+    - `sigfox-dbpassword`: Password for accessing the database.
+    - `sigfox-dbname`: Name of the database that will store the sensor data. Defaults to `sigfox`
+    - `sigfox-dbtable`: Name of the table to store sensor data. Defaults to `sensordata`
+    - `sigfox-dbversion`: Version number of database, used only by Postgres, e.g. `7.2`
+
+    If the `sigfox-dbtable` table above does not exist, it will be created automatically.
+
+1. Install the database library if you are NOT using MySQL or Postgres.
+    Check this page for the library to be used:
+    
+    http://knexjs.org/#Installation-node
+    
+    Then run the command `npm install LIBRARYNAME --save`.  For example if you're using MSSQL, you would
+    run this command:
+    
+    ```bash
+    npm install mssql --save
+    ```
+    
+1. Deploy the `sendToDatabase` Cloud Function with the `deployall.sh` script:
 
     ```bash
     chmod +x */*.sh
@@ -110,7 +138,7 @@ To use multiple Ubidots accounts, combine the API keys from each account with a 
     The route looks like this: 
 
   ```
-  decodeStructuredMessage, sendToUbidots
+  decodeStructuredMessage, sendToDatabase
   ```
 
   1. This route first sends the message to function `decodeStructuredMessage` 
@@ -126,37 +154,26 @@ To use multiple Ubidots accounts, combine the API keys from each account with a 
         `tmp = 31.2, hmd = 49.6, alt = 16.5`       
              
   1.  According to `sigfox-route` above, the resulting decoded message is sent next to function 
-     `sendToUbidots` via the queue `sigfox.types.sendToUbidots`          
+     `sendToDatabase` via the queue `sigfox.types.sendToDatabase`          
 
-  1. `sendToUbidots` sends the decoded message to Ubidots by calling the Ubidots API.  
-      It assumes that you have created a device in Ubidots that's named like
-      `Sigfox Device 2C30EB`, where the last 6 letters/digits is the Sigfox device ID.
+  1. `sendToDatabase` appends the received Sigfox message to the `sensordata` table
+      that you have defined in the Google Cloud Metadata settings.   It calls the
+      [Knex.js](http://knexjs.org/) library to update the database.                                                                
       
-  1. `sendToUbidots` also assumes that you have created variables with the same name as the decoded message fields.
-    For example if you're using this Arduino sketch to send structured sensor data to Sigfox:
-    
-      https://github.com/UnaBiz/unabiz-arduino/blob/0b8d20d5b94cbd8ae4453e72471e511a516b030e/examples/send-altitude-structured/send-altitude-structured.ino#L126-L136      
-      ```arduino
-      Message msg(transceiver);  //  Will contain the structured sensor data.
-      msg.addField("tmp", scaledTemp);  //  4 bytes for the temperature (1 decimal place).
-      msg.addField("hmd", scaledHumidity);  //  4 bytes for the humidity (1 decimal place).
-      msg.addField("alt", scaledAltitude);  //  4 bytes for the altitude (1 decimal place).
-      msg.send();  //  Send the structured sensor data.
-      ```
-      
-      `sendToUbidots` assumes that you have created the variables named `tmp, hmd` and `alt` in your Ubidots device,
-      e.g. `Sigfox Device 2C30EB`. `sendToUbidots` can then populate the `tmp, hmd` and `alt` variables through 
-      the Ubidots API.
-      
+  1. `sendToDatabase` automatically matches the received Sigfox message fields with the `sensordata` fields.
+      So if your Sigfox message includes a new field (perhaps by decoding a Structured Message)
+      and the `sensordata` table also contains a field by that name, `sendToDatabase`
+      will write the new field into the `sensordata` table.
+       
 1.  See this doc for the definition of **Structured Messages:**
 
     https://unabiz.github.io/unashield/
     
-    For instructions on creating the Ubidots devices and variables, check the **UnaShield Tutorial for Ubidots:**
+    To understand how Structured Messages may be used with the Ubidots IoT platform, check the **UnaShield Tutorial for Ubidots:**
     
     https://unabiz.github.io/unashield/ubidots    
 
-### Viewing `sigfox-gcloud-ubidots` server logs
+### Viewing `sigfox-gcloud-data` server logs
 
 You may view the logs through the
 [Google Cloud Logging Console](https://console.cloud.google.com/logs/viewer?resource=cloud_function&minLogLevel=0&expandAll=false)  
@@ -176,9 +193,11 @@ From the screen above you can see the logs generated as each Sigfox message is p
 
 -   **`decodeStructuredMessage`** decodes a compressed Sigfox message that contains multiple field names and field values
 
--   **`sendToUbidots`** is a Google Cloud Function that sends the decoded sensor data to Ubidots via the Ubidots API.
+-   **`sendToDatabase`** would appear after `decodeStructuredMessage`.
+    `sendToDatabase` writes the decoded sensor data to the database via the
+    [Knex.js](http://knexjs.org/) library.
 
-### Tracing `sigfox-gcloud-ubidots` server performance
+### Tracing `sigfox-gcloud-data` server performance
 
 The
 [Google Cloud Trace Console](https://console.cloud.google.com/traces/traces)
@@ -199,9 +218,9 @@ Custom reports may be created in Google Cloud Trace Control to benchmark the per
 
 [<kbd><img src="https://storage.googleapis.com/unabiz-media/sigfox-gcloud/gcloud-trace-report.jpg" width="400"></kbd>](https://storage.googleapis.com/unabiz-media/sigfox-gcloud/gcloud-trace-report.png)
 
-### Understanding and troubleshooting the `sigfox-gcloud-ubidots` server
+### Understanding and troubleshooting the `sigfox-gcloud-data` server
 
-To understand each processing step in the `sigfox-gcloud-ubidots` server, you may use the
+To understand each processing step in the `sigfox-gcloud-data` server, you may use the
 [Google Cloud Debug Console](https://console.cloud.google.com/debug)
 to set breakpoints and capture in-memory variable values for each Google Cloud Function, without stopping or reconfiguring the server.
 
@@ -214,7 +233,7 @@ debugging code yourself.
 
 [<kbd><img src="https://storage.googleapis.com/unabiz-media/sigfox-gcloud/gcloud-debug.jpg" width="1024"></kbd>](https://storage.googleapis.com/unabiz-media/sigfox-gcloud/gcloud-debug.png)
         
-### Testing the `sigfox-gcloud-ubidots` server
+### Testing the `sigfox-gcloud-data` server
 
 1.  Send some Sigfox messages from the Sigfox devices. Monitor the progress
     of the processing through the 
@@ -238,7 +257,7 @@ debugging code yourself.
 
 #  Demo    
 
-1. To send messages from a Sigfox device into Ubidots, you may use this Arduino sketch:
+1. To send messages from a Sigfox device into your database, you may use this Arduino sketch:
 
     https://github.com/UnaBiz/unabiz-arduino/blob/master/examples/send-light-level/send-light-level.ino
     
@@ -250,24 +269,6 @@ debugging code yourself.
     tmp - module temperature, based on the Sigfox module's embedded temperature sensor        
     ```
 
-1. In Ubidots, create the **Devices / Datasources** for each Sigfox device to be integrated with Ubidots.
-    Name the device / datasource using this format: (change `2C30EB` to your Sigfox device ID)
-    
-    ```
-    Sigfox Device 2C30EB
-    ```
-
-   [<kbd><img src="https://storage.googleapis.com/unabiz-media/sigfox-gcloud/ubidots-device-list.jpg" width="800"></kbd>](https://storage.googleapis.com/unabiz-media/sigfox-gcloud/ubidots-device-list.png)
-
-1. For each Ubidots device / datasource, create the **Variables** that will be used to transmit
-    sensor values from the Sigfox device to Ubidots.  For the above example, you may create 3 variables
-    `ctr, lig, tmp` for the Ubidots device `Sigfox Device 2C30EB`.
-    
-    Run the above Arduino-Sigfox sketch and the sensor values will be automatically recorded by Ubidots under
-    `Sigfox Device 2C30EB`.
-
-    [<kbd><img src="https://storage.googleapis.com/unabiz-media/sigfox-gcloud/ubidots-device.jpg" width="800"></kbd>](https://storage.googleapis.com/unabiz-media/sigfox-gcloud/ubidots-device.png)
-    
 1. Alternatively, you may test by sending a Sigfox message
     from your Sigfox device with the `data` field set to:
 
@@ -328,163 +329,13 @@ debugging code yourself.
     }
     ```
            
-1. The test message sent above will be decoded and sent to Ubidots as 
+1. The test message sent above will be decoded and written to your `sensordata` 
+    table as 
 
     ```
     ctr (counter): 13
     lig (light level): 760
     tmp (temperature): 29        
     ```
-
-1. For instructions on creating the Ubidots devices and variables, check the **UnaShield Tutorial for Ubidots:**
-                                                    
-   https://unabiz.github.io/unashield/ubidots    
-   
-# Sending latitude-longitude values to Ubidots
-
-Some Sigfox devices transmit location data in the form of latitude-longitude
-values, such as GPS trackers. Ubidots is capable of rendering such data points
-into a map, but under these conditions:
-
-1. The field names must be `lat` and `lng`
-1. The fields must appear in the **Context Field** of the variable to be rendered.
-
-Suppose your GPS tracker transmits latitude, longitude as well as temperature.
-Then Ubidots expects the `lat` and `lng` fields to be present in the context
-whenever the temperature value is transmitted to Ubidots.
-
-The `sendToUbidots` step can be configured to send any latitude-longitude fields
-as `lat` and `lng`.  In the `config.json` file that you have created above,
-insert 2 lines for `lat` and `lng` like this: (note the comma after the API key)
-
-```
-{
-  "comment": "Configuration file for Ubidots adapter for sigfox-gcloud",
-  "ubidots-api-key": "YOUR_UBIDOTS_API_KEY",
-  "lat": "deviceLat,geolocLat",
-  "lng": "deviceLng,geolocLng"
-}
-```
-
-Then deploy the configuration using the command:
-```bash
-scripts/deployall.sh
-```
-
-This configures `sendToUbidots` to look for any data fields named
-`deviceLat` and `deviceLng`, and if found, duplicate the fields as `lat` and `lng`
-
-Create variables named `lat` and `lng` for your Sigfox Device in Ubidots.
-If your GPS tracker sends the fields `deviceLat` and `deviceLng`,
-they will be rendered correctly in a Ubidots map, like below.
-
-Multiple latitude-longitude field names may be specified in `config.json`.  In the example above,
-`sendToUbidots` searches for the fields `deviceLat` and `deviceLng` first.
-If the fields are not found, then it searches for `geolocLat` and `geolocLng`.
-
-[<kbd><img src="https://storage.googleapis.com/unabiz-media/sigfox-gcloud/ubidots-dashboard.jpg" width="800"></kbd>](https://storage.googleapis.com/unabiz-media/sigfox-gcloud/ubidots-dashboard.png)
-
-# Sending Sigfox Geolocation data to Ubidots
-
-[Sigfox Geolocation](https://www.sigfox.com/en/sigfox-geolocation) is an optional service
-provided by your Sigfox Operator that locates your Sigfox device by using
-the Sigfox network signal data. The latitude-longitude data provided through
-this service may be rendered in Ubidots by setting the **GEOLOC Callback**
-as follows:
-
-Log on to the **Sigfox Backend**<br>
-https://backend.sigfox.com/
-
-Click **"Device Type"** at the top menu.<br>
-Click on your device type.
-
-Click **"Callbacks"** in the left menu.<br>
-Click **"New"** at top right.
-
-Enter the callback details as follows:
-
-  -  **Type**: <br>
-      **`SERVICE, GEOLOC`**
-  
-  -  **Channel**: <br>
-      **`URL`**
-  
-  -  **URL Pattern**: <br>
-      `https://us-central1-myproject.cloudfunctions.net/sigfoxCallback`<br>
-      Change `myproject` to your Google Cloud Project ID
-
-  -  **Use HTTP Method**: <br>
-      **`POST`**
-      
-  -  **Send SNI**: <br>
-      **Checked (Yes)**
-
-  -  **Headers**: <br>
-      **(Blank)**
-
-  -  **Content Type**: <br>
-      **`application/json`**
-          
-  - Set the **Body** as:
-
-      ```json
-      {
-        "time": {time},
-        "action": "geoloc",
-        "device" : "{device}",       
-        "geolocLat": {lat},              
-        "geolocLng": {lng},              
-        "geolocLocationAccuracy": {radius},
-        "seqNumber": {seqNumber},
-        "duplicate": "{duplicate}",  
-        "snr": "{snr}",              
-        "station": "{station}",      
-        "avgSnr": "{avgSnr}",     
-        "rssi": "{rssi}"               
-      }
-      ```
-      
-      Note that the Sigfox Geolocation latitude and longitude fields
-      will be transmitted as `geolocLat` and `geolocLng` with the above settings
-
-[<kbd><img src="https://storage.googleapis.com/unabiz-media/sigfox-gcloud/sigfox-geoloc-detail.jpg" width="800"></kbd>](https://storage.googleapis.com/unabiz-media/sigfox-gcloud/sigfox-geoloc-detail.png)
-
-Note that this is a different callback from the **Data Callback** that we
-use for normal Sigfox messages.
-
-After saving the callback you should see the Sigfox Geolocation callback
-appear under the `SERVICE Callbacks` section, not `DATA Callbacks`.
-
-[<kbd><img src="https://storage.googleapis.com/unabiz-media/sigfox-gcloud/sigfox-geoloc-list.jpg" width="800"></kbd>](https://storage.googleapis.com/unabiz-media/sigfox-gcloud/sigfox-geoloc-list.png)
-
-Follow the instructions in the previous section to set `config.json` as
-
-```
-{
-  "comment": "Configuration file for Ubidots adapter for sigfox-gcloud",
-  "ubidots-api-key": "YOUR_UBIDOTS_API_KEY",
-  "lat": "deviceLat,geolocLat",
-  "lng": "deviceLng,geolocLng"
-}
-```
-Then deploy the configuration using the command:
-```bash
-scripts/deployall.sh
-```
-Create variables named `lat`, `lng`, `geolocLat` and `geolocLng` for your Sigfox Device in Ubidots.
-
-To verify that the Sigfox Geolocation data is transmitted correctly, 
-click on the variable `geolocLat` for your Sigfox Device.
-
-[<kbd><img src="https://storage.googleapis.com/unabiz-media/sigfox-gcloud/ubidots-geoloc.jpg" width="1024"></kbd>](https://storage.googleapis.com/unabiz-media/sigfox-gcloud/ubidots-geoloc.png)
-
-You'll see that the `lat` field in the `Context` column shows the same value
-as the `geolocLat` field in the left column.  Which means that `sendToUbidots`
-has correctly copied the `geolocLat` field into `lat`.
-
-Check the same for `geolocLng` and `lng` fields. 
-
-Now that the `lat` and `lng` fields are properly populated, we will see the
-Sigfox Geolocation points on the Ubidots map.
-
-[<kbd><img src="https://storage.googleapis.com/unabiz-media/sigfox-gcloud/ubidots-dashboard.jpg" width="800"></kbd>](https://storage.googleapis.com/unabiz-media/sigfox-gcloud/ubidots-dashboard.png)
+    
+    The other fields of the Sigfox message will be written as well.
