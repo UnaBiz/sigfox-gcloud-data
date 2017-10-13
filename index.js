@@ -17,6 +17,7 @@ if (process.env.FUNCTION_NAME) {
   require('@google-cloud/trace-agent').start();
   require('@google-cloud/debug-agent').start();
 }
+const knex = require('knex');
 
 //  End Common Declarations
 //  //////////////////////////////////////////////////////////////////////////////////////////
@@ -24,63 +25,115 @@ if (process.env.FUNCTION_NAME) {
 //  //////////////////////////////////////////////////////////////////////////////////////////
 //  Begin Message Processing Code
 
-// const config = require('./config.json');  //  Ubidots API Key
-const knex = require('knex');
-const dbconfig = {
-  client: 'mysql',
-  connection: {
-    host : '???',
-    user : 'user',
-    password : '???',
-    database : 'sigfox',
-  },
+//  Our database settings are stored in the Google Cloud Metadata store under this prefix.
+const metadataPrefix = 'sigfox-db';
+const metadataKeys = {   //  Keys we use and their default values, before prepending metadataPrefix.
+  client: null,          //  Type of database client e.g mysql
+  host: null,            //  Address of database server e.g. 127.0.0.1
+  user: 'user',          //  User ID for accessing the database e.g. user
+  password: null,        //  Password for accessing the database.
+  name: 'sigfox',        //  Name of the database, e.g. sigfox
+  table: 'sensordata',   //  Name of the table to store sensor data e.g. sensordata
+  version: null,         //  Version number of database, used only by Postgres e.g. 7.2
+  id: 'id',              //  Name of the ID field in the table e.g. id
 };
-const dbconfig2 = {
-  client: 'pg',
-  version: '7.2',
-  connection: {
-    host : '127.0.0.1',
-    user : 'your_database_user',
-    password : 'your_database_password',
-    database : 'myapp_test',
-  },
-};
+//  Name of Feathers service.
+const serviceName = 'sensorrecorder';
+
+
 const db = knex(dbconfig);
 
-const serviceName = 'sensorrecorder';
-const name = 'sensordata';
-const id = 'id';
-const events = null;
-const paginate = null;
-
-db.schema.createTable(name, table => {
-  console.log(`Creating table ${name}`);
-  table.increments(id);
+db.schema.createTable(metadataKeys.table, (table) => {
+  console.log(`Creating table ${metadataKeys.table}`);
+  table.increments(metadataKeys.id);
   table.string('text');
 });
-
-/*
-sigfox-dbclient	mysql
-sigfox-dbhost	127.0.0.1
-sigfox-dbname
-sigfox-dbpassword
-sigfox-dbtable
-sigfox-dbuser
-sigfox-dbversion
-sigfox-dbid
-*/
 
 function wrap() {
   //  Wrap the module into a function so that all Google Cloud resources are properly disposed.
   const sgcloud = require('sigfox-gcloud'); //  sigfox-gcloud Framework
+  const googlemetadata = require('sigfox-gcloud/lib/google-metadata');  //  For accessing Google Metadata.
   const feathers = require('feathers');
   const service = require('feathers-knex');
   const errorHandler = require('feathers-errors/handler');
 
-  const Model = db;
-  const app = feathers()
-    .use(`/${serviceName}`, service({ Model, name, id, events, paginate }))
-    .use(errorHandler());
+  let getMetadataConfigPromise = null;  //  Promise for returning the config.
+
+  function getMetadataConfig(req, metadataPrefix0, metadataKeys0) {
+    //  Fetch the metadata config from the Google Cloud Metadata store.  metadataPrefix is the common
+    //  prefix for all config keys, e.g. "sigfox-db".  metadataKeys is a map of the key suffix
+    //  and the default values.  Returns a promise for the map of metadataKeys to values.
+    //  We use the Google Cloud Metadata store because it has an editing screen and is easier
+    //  to deploy, compared to a config file.
+    if (getMetadataConfigPromise) return getMetadataConfigPromise;  //  Return the cache.
+    sgcloud.log(req, 'getMetadataConfig', { metadataPrefix0, metadataKeys0 });
+    let authClient = null;
+    let metadata = null;
+    //  Get a Google auth client.
+    getMetadataConfigPromise = googlemetadata.authorize(req)
+      .then((res) => { authClient = res; })
+      //  Get the project metadata.
+      .then(() => googlemetadata.getProjectMetadata(req, authClient))
+      //  Convert the metadata to a JavaScript object.
+      .then(() => googlemetadata.convertMetadata(req, metadata))
+      .then((res) => { metadata = res; })
+      .then(() => {
+        //  Hunt for the metadata keys in the metadata object and copy them.
+        const config = Object.assign({}, metadataKeys0);
+        for (const suffix of Object.keys(config)) {
+          const key = metadataPrefix0 + suffix;
+          if (metadata[key] !== null && metadata[key] !== undefined) {
+            //  Copy the non-null values.
+            config[key] = metadata[key];
+          }
+        }
+        const result = config;
+        sgcloud.log(req, 'getMetadataConfig', { result, metadataPrefix0, metadataKeys0 });
+        return result;
+      })
+      .catch((error) => {
+        sgcloud.log(req, 'getMetadataConfig', { error, metadataPrefix0, metadataKeys0 });
+        throw error;
+      });
+    return getMetadataConfigPromise;
+  }
+
+  function getDatabaseConfig(req) {
+    //  Return the database connection config from the Google Cloud Metadata store.
+    return getMetadataConfig(req, metadataPrefix, metadataKeys)
+      .then((metadata) => {
+        const dbconfig = {
+          client: metadata.client,  //  e.g. 'pg'
+          connection: {
+            host: metadata.host,
+            user: metadata.user,
+            password: metadata.password,
+            database: metadata.name,
+          },
+        };
+        //  Set the version for Postgres.
+        if (metadata.version) dbconfig.version = metadata.version;
+        return dbconfig;
+      })
+      .catch((error) => {
+        sgcloud.log(req, 'getDatabaseConfig', { error });
+        throw error;
+      });
+  }
+
+  //  Feathers service for accessing the database.
+  let app = null;
+
+  function createService(req) {
+    const Model = db;
+    const name = metadataKeys.table;
+    const id = metadataKeys.id;
+    const events = null;
+    const paginate = null;
+    app = feathers()
+      .use(`/${serviceName}`, service({ Model, name, id, events, paginate }))
+      .use(errorHandler());
+  }
 
   function task(req, device, body, msg) {
     return app.service(serviceName).create({
@@ -99,10 +152,6 @@ function wrap() {
 
     //  For unit test only.
     task,
-    loadDevicesByClient,
-    getVariablesByDevice,
-    setVariables,
-    mergeDevices,
   };
 }
 
