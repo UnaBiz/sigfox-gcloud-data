@@ -31,15 +31,46 @@ let db = null;  //  Instance of the KNEX library.
 //  Our database settings are stored in the Google Cloud Metadata store under this prefix.
 const metadataPrefix = 'sigfox-db';
 const metadataKeys = {   //  Keys we use and their default values, before prepending metadataPrefix.
-  client: null,          //  Type of database client e.g mysql
+  client: null,          //  Database client to be used e.g mysql. Must be installed from npm.
   host: null,            //  Address of database server e.g. 127.0.0.1
   user: 'user',          //  User ID for accessing the database e.g. user
   password: null,        //  Password for accessing the database.
   name: 'sigfox',        //  Name of the database, e.g. sigfox
   table: 'sensordata',   //  Name of the table to store sensor data e.g. sensordata
   version: null,         //  Version number of database, used only by Postgres e.g. 7.2
-  id: 'id',              //  Name of the ID field in the table e.g. id
+  id: 'uuid',            //  Name of the ID field in the table e.g. uuid
 };
+
+//  Default fields to be recorded in sensordata table.
+const sensorfields = (tbl) => ({
+  uuid: tbl.uuid,  //  Unique message ID in UUID format.
+  timestamp: tbl.timestamp,  //  Timestamp of message receipt at basestation.
+
+  alt: tbl.float,  //  Altitude in metres above sea level, used by send-alt-structured demo.
+  avgSnr: tbl.float,  //  Sigfox average signal-to-noise ratio.
+  baseStationLat: tbl.float,  //  Sigfox basestation latitude.  Usually truncated to 0 decimal points.
+  baseStationLng: tbl.float,  //  Sigfox basestation longitude.  Usually truncated to 0 decimal points.
+  baseStationTime: tbl.integer,  //  Sigfox timestamp of message receipt at basestation, in seconds since epoch (1/1/1970).
+  callbackTimestamp: tbl.timestamp,  //  Timestamp at which sigfoxCallback was called.
+  data: tbl.string,  //  Sigfox message data.
+  datetime: tbl.string,  //  Human-readable datetime.
+  device: tbl.string,  //  Sigfox device ID.
+  deviceLat: tbl.float,  //  Latitude of GPS tracker e.g. UnaTumbler.
+  deviceLng: tbl.float,  //  Longitude of GPS tracker e.g. UnaTumbler.
+  duplicate: tbl.boolean,  //  Sigfox sets to false if this is the first message received among all basestations.
+  geolocLat: tbl.float,  //  Sigfox Geolocation latitude of device.
+  geolocLng: tbl.float,  //  Sigfox Geolocation longitude of device.
+  geolocLocationAccuracy: tbl.float,  //  Sigfox Geolocation accuracy of device.
+  hmd: tbl.float,  //  % Humidity, used by send-alt-structured demo.
+  lat: tbl.float,  //  Latitude for rendering in Ubidots.
+  lng: tbl.float,  //  Longitude for rendering in Ubidots.
+  rssi: tbl.float,  //  Sigfox signal strength.
+  seqNumber: tbl.integer,  //  Sigfox message sequence number.
+  snr: tbl.float,  //  Sigfox message signal-to-noise ratio.
+  station: tbl.string,  //  Sigfox basestation ID.
+  tmp: tbl.float,  //  Temperature in degrees Celsius, used by send-alt-structured demo.
+});
+
 //  Name of Feathers service.
 const serviceName = 'sensorrecorder';
 
@@ -136,8 +167,17 @@ function wrap() {
         id = metadata.id;
         sgcloud.log(req, 'createTable', { table, id });
         return db.schema.createTable(table, (tbl) => {
-          tbl.increments(id);
-          tbl.string('text');
+          const fields = sensorfields(tbl);
+          for (const fieldName of Object.keys(fields)) {
+            const fieldType = fields[fieldName];
+            if (!fieldType) {
+              const error = new Error(`Unknown field type for ${fieldName}`);
+              sgcloud.error(req, 'createTable', { error });
+              continue;
+            }
+            fieldType(fieldName);
+          }
+          tbl.timestamps(true, true);
         });
       })
       .catch((error) => {
@@ -182,11 +222,13 @@ function wrap() {
     //  Database connection settings are read from Google Compute Metadata.
     //  If the sensordata table is missing, it will be created.
     let app = null;
+    //  Create the Feathers service or return from cache.
     return createService(req)
       .then((res) => { app = res; })  // eslint-disable-next-line arrow-body-style
       .then(() => {
+        //  Create the record through Feathers and KNEX.
         return app.service(serviceName).create({
-          text: 'Message created on server',
+          station: '0000',
         });
       })
       .then(result => sgcloud.log(req, 'task', { result, serviceName }))
