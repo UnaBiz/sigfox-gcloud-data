@@ -1,6 +1,6 @@
 #!/bin/bash
 
-name=sendToUbidots
+name=sendToDatabase
 localpath=.
 trigger=--trigger-topic
 topic=sigfox.types.${name}

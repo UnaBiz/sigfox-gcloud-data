@@ -1,7 +1,7 @@
 {
-  "name": "sigfox-gcloud-ubidots",
+  "name": "sigfox-gcloud-data",
   "version": "1.0.1",
-  "description": "sigfox-gcloud adapter for integrating Sigfox devices with Ubidots",
+  "description": "sigfox-gcloud adapter for writing Sigfox into databases",
   "main": "index.js",
   "scripts": {
     "deploy": "scripts/deployall.sh",
@@ -9,7 +9,9 @@
   },
   "keywords": [
     "sigfox",
-    "ubidots",
+    "mysql",
+    "postgres",
+    "knex",
     "gcloud",
     "functions",
     "google",
@@ -40,8 +42,7 @@
     "node-fetch": "^1.6.3",
     "pg": "^7.3.0",
     "safe-buffer": "5.0.1",
-    "sigfox-gcloud": "UnaBiz/sigfox-gcloud",
-    "ubidots": "UnaBiz/ubidots-node"
+    "sigfox-gcloud": "^1.0.1"
   },
   "devDependencies": {
     "chai": "^3.5.0",
@@ -52,10 +53,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/UnaBiz/sigfox-gcloud-ubidots.git"
+    "url": "git+https://github.com/UnaBiz/sigfox-gcloud-data.git"
   },
   "bugs": {
-    "url": "https://github.com/UnaBiz/sigfox-gcloud-ubidots/issues"
+    "url": "https://github.com/UnaBiz/sigfox-gcloud-data/issues"
   },
-  "homepage": "https://github.com/UnaBiz/sigfox-gcloud-ubidots#readme"
+  "homepage": "https://github.com/UnaBiz/sigfox-gcloud-data#readme"
 }
