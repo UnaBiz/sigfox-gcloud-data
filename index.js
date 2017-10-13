@@ -210,6 +210,8 @@ module.exports = {
   //  For unit test only.
   task: wrap().task,
   createTable: wrap().createTable,
+  getMetadataConfig: wrap().getMetadataConfig,
+  getDatabaseConfig: wrap().getDatabaseConfig,
   metadataPrefix,
   metadataKeys,
 };
