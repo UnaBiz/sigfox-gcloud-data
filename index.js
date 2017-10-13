@@ -117,19 +117,31 @@ function wrap() {
       });
   }
 
+  function throwError(err) {
+    throw err;
+  }
+
   function createTable(req) {
     //  Create the sensordata table if it doesn't exist.
     //  Returns a promise.
-    return getDatabaseConfig(req)
+    let table = null;
+    let id = null;
+    let metadata = null;
+    return Promise.all([
+      getDatabaseConfig(req).catch(throwError),
+      getMetadataConfig(req).then((res) => { metadata = res; }).catch(throwError),
+    ])
       .then(() => {
-        return db.schema.createTable(metadataKeys.table, (table) => {
-          console.log(`Creating table ${metadataKeys.table}`);
-          table.increments(metadataKeys.id);
-          table.string('text');
+        table = metadata.table;
+        id = metadata.id;
+        sgcloud.log(req, 'createTable', { table, id });
+        return db.schema.createTable(table, (tbl) => {
+          tbl.increments(id);
+          tbl.string('text');
         });
       })
       .catch((error) => {
-        sgcloud.log(req, 'createTable', { error });
+        sgcloud.log(req, 'createTable', { error, table, id });
         throw error;
       });
   }
@@ -141,13 +153,18 @@ function wrap() {
     //  Create the Feathers service that will provide database access.
     //  Returns a promise.
     if (servicePromise) return servicePromise;
-    servicePromise = getDatabaseConfig(req)
+    let metadata = null;
+    servicePromise = Promise.all([
+      getDatabaseConfig(req).catch(throwError),
+      getMetadataConfig(req).then((res) => { metadata = res; }).catch(throwError),
+    ])
       .then(() => {
         const Model = db;
-        const name = metadataKeys.table;
-        const id = metadataKeys.id;
+        const name = metadata.table;
+        const id = metadata.id;
         const events = null;
         const paginate = null;
+        sgcloud.log(req, 'createService', { serviceName, name, id });
         const app = feathers()
           .use(`/${serviceName}`, service({ Model, name, id, events, paginate }))
           .use(errorHandler());
@@ -166,13 +183,13 @@ function wrap() {
     //  If the sensordata table is missing, it will be created.
     let app = null;
     return createService(req)
-      .then((res) => { app = res; })
+      .then((res) => { app = res; })  // eslint-disable-next-line arrow-body-style
       .then(() => {
         return app.service(serviceName).create({
           text: 'Message created on server',
         });
       })
-      .then(message => console.log('Created message', message))
+      .then(result => sgcloud.log(req, 'task', { result, serviceName }))
       //  Return the message for the next processing step.
       .then(() => msg)
       .catch((error) => { sgcloud.log(req, 'task', { error, device, body, msg }); throw error; });
