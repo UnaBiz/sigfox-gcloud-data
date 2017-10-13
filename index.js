@@ -74,6 +74,7 @@ let db = null;  //  Instance of the KNEX library.
 let tableInfo = null;  //  Contains the actual columns in the sensordata table.
 let getMetadataConfigPromise = null;  //  Promise for returning the metadata config.
 let getDatabaseConfigPromise = null;  //  Promise for returning the database connection.
+let reuseCount = 0;
 
 function wrap() {
   //  Wrap the module into a function so that all Google Cloud resources are properly disposed.
@@ -126,7 +127,11 @@ function wrap() {
     //  Returns a promise.
     let metadata = null;
     let dbconfig = null;
-    if (getDatabaseConfigPromise && !reload) return getDatabaseConfigPromise;
+    if (getDatabaseConfigPromise && !reload) {
+      reuseCount += 1;
+      return getDatabaseConfigPromise;
+    }
+    reuseCount = 0;
     getDatabaseConfigPromise = getMetadataConfig(req, metadataPrefix, metadataKeys)
       .then((res) => { metadata = res; })
       .then(() => {
@@ -224,6 +229,11 @@ function wrap() {
       getMetadataConfig(req).then((res) => { metadata = res; }).catch(throwError),
     ])
       .then(() => {
+        //  Create the sensordata table if it doesn't exist.
+        if (tableInfo && Object.keys(tableInfo).length > 0) return 'OK';
+        return createTable(req);
+      })
+      .then(() => {
         //  Create the record by calling KNEX library.
         table = metadata.table;
         //  Remove the fields that don't exist.
@@ -237,7 +247,7 @@ function wrap() {
         //  Insert the record.
         return db(table).insert(body);
       })
-      .then(result => sgcloud.log(req, 'task', { result, body, table }))
+      .then(result => sgcloud.log(req, 'task', { result, body, table, reuseCount }))
       //  Return the message for the next processing step.
       .then(() => msg)
       .catch((error) => { sgcloud.log(req, 'task', { error, device, body, msg, table }); throw error; });

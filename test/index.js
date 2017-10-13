@@ -2,10 +2,16 @@
 /* global describe:true, it:true, beforeEach:true */
 /* eslint-disable import/no-extraneous-dependencies, no-console, no-unused-vars, one-var,
  no-underscore-dangle */
+const fs = require('fs');
 const chai = require('chai');
 const chaiAsPromised = require('chai-as-promised');
 const common = require('sigfox-gcloud');
 const knex = require('knex');
+const uuidv4 = require('uuid/v4');
+
+//  Copy google-credentials before starting.
+const creds = fs.readFileSync('./google-credentials.bak');
+fs.writeFileSync('./google-credentials.json', creds);
 const moduleTested = require('../index');  //  Module to be tested, i.e. the parent module.
 
 const moduleName = 'sendToDatabase';
@@ -46,7 +52,7 @@ const testBody = (timestamp, device, data) => ({
   snr: 18.86,
   seqNumberCheck: null,
   rssi: -123,
-  uuid: "ab0d40bd-dbc5-4076-b684-3f610d96e621",
+  uuid: uuidv4(),
 });
 const testMessage = (timestamp, device, data) => ({
   history: [
@@ -85,6 +91,12 @@ describe(moduleName, () => {
     //  Erase the request object before every test.
     startDebug();
     req = { unittest: true };
+  });
+
+  it.skip('should set up google-credentials.json', () => {
+    const creds = fs.readFileSync('./google-credentials.bak');
+    fs.writeFileSync('./google-credentials.json', creds);
+    return Promise.resolve('OK');
   });
 
   it('should get config from metadata', () => {
@@ -126,7 +138,7 @@ describe(moduleName, () => {
     ]);
   });
 
-  it('should delete sensor table', () => {
+  it.skip('should delete sensor table', () => {
     //  Delete the sensor table.
     const promise = testDB.schema.dropTableIfExists(testMetadata.table)
       .then((result) => {
@@ -143,7 +155,7 @@ describe(moduleName, () => {
     ]);
   });
 
-  it('should create sensor table', () => {
+  it.skip('should create sensor table', () => {
     //  Create the sensordata table.
     const promise = moduleTested.createTable(req)
       .then((result) => {
@@ -179,5 +191,12 @@ describe(moduleName, () => {
     return Promise.all([
       promise,
     ]);
+  });
+
+  it('should delete google-credentials.json', () => {
+    const creds = fs.readFileSync('./google-credentials.json');
+    fs.writeFileSync('./google-credentials.bak', creds);
+    fs.unlink('./google-credentials.json');
+    return Promise.resolve('OK');
   });
 });
