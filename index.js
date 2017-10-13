@@ -161,6 +161,9 @@ function wrap() {
   }
 
   function task(req, device, body, msg) {
+    //  Handle the Sigfox received by adding it to the sensordata table.
+    //  Database connection settings are read from Google Compute Metadata.
+    //  If the sensordata table is missing, it will be created.
     let app = null;
     return createService(req)
       .then((res) => { app = res; })
