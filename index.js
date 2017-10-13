@@ -17,10 +17,9 @@ if (process.env.FUNCTION_NAME) {
   require('@google-cloud/trace-agent').start();
   require('@google-cloud/debug-agent').start();
 }
-//  We use Feathers and the KNEX library to support many types of databases.
+//  We use KNEX library to support many types of databases.
 //  Remember to install any needed database clients e.g. "mysql", "pg"
 const knex = require('knex');
-let db = null;  //  Instance of the KNEX library.
 
 //  End Common Declarations
 //  //////////////////////////////////////////////////////////////////////////////////////////
@@ -51,7 +50,7 @@ const sensorfields = (tbl) => ({
   baseStationLat: [tbl.float, false, 'Sigfox basestation latitude.  Usually truncated to 0 decimal points, e.g. 1'],
   baseStationLng: [tbl.float, false, 'Sigfox basestation longitude.  Usually truncated to 0 decimal points, e.g. 104'],
   baseStationTime: [tbl.integer, false, 'Sigfox timestamp of message receipt at basestation, in seconds since epoch (1/1/1970), e.g. 1507798768'],
-  callbackTimestamp: [tbl.integer, false, 'Timestamp at which sigfoxCallback was called, e.g. 1507798769710'],
+  // callbackTimestamp: [f => tbl.timestamp.bind(tbl)(f).defaultTo(knex.fn.now()), false, 'Timestamp at which sigfoxCallback was called, e.g. 1507798769710'],
   data: [tbl.string, false, 'Sigfox message data, e.g. b0510001a421f90194056003'],
   datetime: [tbl.string, false, 'Human-readable datetime, e.g. 2017-10-12 08:59:29'],
   device: [tbl.string, true, 'Sigfox device ID, e.g. 2C1C85'],
@@ -71,18 +70,16 @@ const sensorfields = (tbl) => ({
   tmp: [tbl.float, false, 'Temperature in degrees Celsius, used by send-alt-structured demo, e.g. 25.6'],
 });
 
-//  Name of Feathers service.
-const serviceName = 'sensorrecorder';
+let db = null;  //  Instance of the KNEX library.
+let tableInfo = null;  //  Contains the actual columns in the sensordata table.
 
 function wrap() {
   //  Wrap the module into a function so that all Google Cloud resources are properly disposed.
   const sgcloud = require('sigfox-gcloud'); //  sigfox-gcloud Framework
   const googlemetadata = require('sigfox-gcloud/lib/google-metadata');  //  For accessing Google Metadata.
-  const feathers = require('feathers');
-  const service = require('feathers-knex');
-  const errorHandler = require('feathers-errors/handler');
 
-  let getMetadataConfigPromise = null;  //  Promise for returning the config.
+  let getMetadataConfigPromise = null;  //  Promise for returning the metadata config.
+  let getDatabaseConfigPromise = null;  //  Promise for returning the database connection.
 
   function getMetadataConfig(req, metadataPrefix0, metadataKeys0) {
     //  Fetch the metadata config from the Google Cloud Metadata store.  metadataPrefix is the common
@@ -123,11 +120,18 @@ function wrap() {
     return getMetadataConfigPromise;
   }
 
-  function getDatabaseConfig(req) {
+  function getDatabaseConfig(req, reload) {
     //  Return the database connection config from the Google Cloud Metadata store.
-    return getMetadataConfig(req, metadataPrefix, metadataKeys)
-      .then((metadata) => {
-        const dbconfig = {
+    //  Set the global db with the KNEX object and tableInfo with the sensor table info.
+    //  Return the cached connection unless reload is true.
+    //  Returns a promise.
+    let metadata = null;
+    let dbconfig = null;
+    if (getDatabaseConfigPromise && !reload) return getDatabaseConfigPromise;
+    getDatabaseConfigPromise = getMetadataConfig(req, metadataPrefix, metadataKeys)
+      .then((res) => { metadata = res; })
+      .then(() => {
+        dbconfig = {
           client: metadata.client,  //  e.g. 'pg'
           connection: {
             host: metadata.host,
@@ -140,12 +144,16 @@ function wrap() {
         if (metadata.version) dbconfig.version = metadata.version;
         //  Create the KNEX instance for accessing the database.
         db = knex(dbconfig);
-        return dbconfig;
       })
+      //  Read the column info for the sensordata table.
+      .then(() => db(metadata.table).columnInfo())
+      .then((res) => { tableInfo = res; })
+      .then(() => dbconfig)
       .catch((error) => {
         sgcloud.log(req, 'getDatabaseConfig', { error });
         throw error;
       });
+    return getDatabaseConfigPromise;
   }
 
   function throwError(err) {
@@ -158,6 +166,7 @@ function wrap() {
     let table = null;
     let id = null;
     let metadata = null;
+    let result = null;
     return Promise.all([
       getDatabaseConfig(req).catch(throwError),
       getMetadataConfig(req).then((res) => { metadata = res; }).catch(throwError),
@@ -166,7 +175,7 @@ function wrap() {
         table = metadata.table;
         id = metadata.id;
         sgcloud.log(req, 'createTable', { table, id });
-        return db.schema.createTable(table, (tbl) => {
+        return db.schema.createTableIfNotExists(table, (tbl) => {
           //  Create each field found in sensorfields.
           const fields = sensorfields(tbl);
           for (const fieldName of Object.keys(fields)) {
@@ -190,62 +199,49 @@ function wrap() {
           tbl.timestamps(true, true);
         });
       })
+      .then((res) => {
+        result = res;
+        sgcloud.log(req, 'createTable', { result, table, id });
+      })
+      //  Reload the table info.
+      .then(() => getDatabaseConfig(req, true))
+      .then(() => result)
       .catch((error) => {
-        sgcloud.log(req, 'createTable', { error, table, id });
+        sgcloud.error(req, 'createTable', { error, table, id });
         throw error;
       });
   }
 
-  //  Feathers service for accessing the database.
-  let servicePromise = null;
-
-  function createService(req) {
-    //  Create the Feathers service that will provide database access.
-    //  Returns a promise.
-    if (servicePromise) return servicePromise;
+  function task(req, device, body0, msg) {
+    //  Handle the Sigfox received by adding it to the sensordata table.
+    //  Database connection settings are read from Google Compute Metadata.
+    //  If the sensordata table is missing, it will be created.
     let metadata = null;
-    servicePromise = Promise.all([
+    let table = null;
+    const body = Object.assign({}, body0);
+    //  Create the KNEX database connection or return from cache.
+    return Promise.all([
       getDatabaseConfig(req).catch(throwError),
       getMetadataConfig(req).then((res) => { metadata = res; }).catch(throwError),
     ])
       .then(() => {
-        const Model = db;
-        const name = metadata.table;
-        const id = metadata.id;
-        const events = null;
-        const paginate = null;
-        sgcloud.log(req, 'createService', { serviceName, name, id });
-        const app = feathers()
-          .use(`/${serviceName}`, service({ Model, name, id, events, paginate }))
-          .use(errorHandler());
-        return app;
+        //  Create the record by calling KNEX library.
+        table = metadata.table;
+        //  Remove the fields that don't exist.
+        for (const key of Object.keys(body)) {
+          if (!tableInfo[key]) delete body[key];
+        }
+        //  Convert the timestamp field from number to text.
+        if (body.timestamp) {
+          body.timestamp = new Date(parseInt(body.timestamp, 10)).toISOString();
+        }
+        //  Insert the record.
+        return db(table).insert(body);
       })
-      .catch((error) => {
-        sgcloud.log(req, 'createService', { error });
-        throw error;
-      });
-    return servicePromise;
-  }
-
-  function task(req, device, body, msg) {
-    //  Handle the Sigfox received by adding it to the sensordata table.
-    //  Database connection settings are read from Google Compute Metadata.
-    //  If the sensordata table is missing, it will be created.
-    let app = null;
-    //  Create the Feathers service or return from cache.
-    return createService(req)
-      .then((res) => { app = res; })  // eslint-disable-next-line arrow-body-style
-      .then(() => {
-        //  Create the record through Feathers and KNEX.
-        return app.service(serviceName).create({
-          uuid: '4cf3ad36-3d3e-415c-a25b-9f8ab2bb4466',
-          station: '0000',
-        });
-      })
-      .then(result => sgcloud.log(req, 'task', { result, serviceName }))
+      .then(result => sgcloud.log(req, 'task', { result, body, table }))
       //  Return the message for the next processing step.
       .then(() => msg)
-      .catch((error) => { sgcloud.log(req, 'task', { error, device, body, msg }); throw error; });
+      .catch((error) => { sgcloud.log(req, 'task', { error, device, body, msg, table }); throw error; });
   }
 
   return {
