@@ -72,14 +72,13 @@ const sensorfields = (tbl) => ({
 
 let db = null;  //  Instance of the KNEX library.
 let tableInfo = null;  //  Contains the actual columns in the sensordata table.
+let getMetadataConfigPromise = null;  //  Promise for returning the metadata config.
+let getDatabaseConfigPromise = null;  //  Promise for returning the database connection.
 
 function wrap() {
   //  Wrap the module into a function so that all Google Cloud resources are properly disposed.
   const sgcloud = require('sigfox-gcloud'); //  sigfox-gcloud Framework
   const googlemetadata = require('sigfox-gcloud/lib/google-metadata');  //  For accessing Google Metadata.
-
-  let getMetadataConfigPromise = null;  //  Promise for returning the metadata config.
-  let getDatabaseConfigPromise = null;  //  Promise for returning the database connection.
 
   function getMetadataConfig(req, metadataPrefix0, metadataKeys0) {
     //  Fetch the metadata config from the Google Cloud Metadata store.  metadataPrefix is the common
@@ -233,7 +232,7 @@ function wrap() {
         }
         //  Convert the timestamp field from number to text.
         if (body.timestamp) {
-          body.timestamp = new Date(parseInt(body.timestamp, 10)).toISOString();
+          body.timestamp = new Date(parseInt(body.timestamp, 10));
         }
         //  Insert the record.
         return db(table).insert(body);
