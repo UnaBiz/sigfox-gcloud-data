@@ -39,7 +39,9 @@
     "googleapis": "^22.2.0",
     "json-stringify-safe": "^5.0.1",
     "knex": "^0.13.0",
+    "mysql": "^2.15.0",
     "node-fetch": "^1.6.3",
+    "pg": "^7.3.0",
     "safe-buffer": "5.0.1",
     "sigfox-gcloud": "UnaBiz/sigfox-gcloud",
     "ubidots": "UnaBiz/ubidots-node"

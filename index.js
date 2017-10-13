@@ -18,6 +18,7 @@ if (process.env.FUNCTION_NAME) {
   require('@google-cloud/debug-agent').start();
 }
 //  We use Feathers and the KNEX library to support many types of databases.
+//  Remember to install any needed database clients e.g. "mysql", "pg"
 const knex = require('knex');
 let db = null;  //  Instance of the KNEX library.
 
@@ -68,16 +69,16 @@ function wrap() {
       //  Get the project metadata.
       .then(() => googlemetadata.getProjectMetadata(req, authClient))
       //  Convert the metadata to a JavaScript object.
-      .then(() => googlemetadata.convertMetadata(req, metadata))
+      .then(res => googlemetadata.convertMetadata(req, res))
       .then((res) => { metadata = res; })
       .then(() => {
         //  Hunt for the metadata keys in the metadata object and copy them.
         const config = Object.assign({}, metadataKeys0);
-        for (const suffix of Object.keys(config)) {
-          const key = metadataPrefix0 + suffix;
-          if (metadata[key] !== null && metadata[key] !== undefined) {
+        for (const configKey of Object.keys(config)) {
+          const metadataKey = metadataPrefix0 + configKey;
+          if (metadata[metadataKey] !== null && metadata[metadataKey] !== undefined) {
             //  Copy the non-null values.
-            config[key] = metadata[key];
+            config[configKey] = metadata[metadataKey];
           }
         }
         const result = config;
@@ -182,6 +183,8 @@ function wrap() {
     //  For unit test only.
     task,
     createTable,
+    getMetadataConfig,
+    getDatabaseConfig,
   };
 }
 
@@ -198,17 +201,15 @@ module.exports = {
     //  Create a wrapper and serve the PubSub event.
     let wrapper = wrap();
     return wrapper.serveQueue(event)
-      .then((result) => {
-        wrapper = null;  //  Dispose the wrapper and all resources inside.
-        return result;
-      })
-      .catch((error) => {
-        wrapper = null;  //  Dispose the wrapper and all resources inside.
-        return error;  //  Suppress the error or Google Cloud will call the function again.
-      });
+      //  Dispose the wrapper and all resources inside.
+      .then((result) => { wrapper = null; return result; })
+      //  Suppress the error or Google Cloud will call the function again.
+      .catch((error) => { wrapper = null; return error; });
   },
 
   //  For unit test only.
   task: wrap().task,
   createTable: wrap().createTable,
+  metadataPrefix,
+  metadataKeys,
 };
