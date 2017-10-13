@@ -247,7 +247,7 @@ function wrap() {
         //  Insert the record.
         return db(table).insert(body);
       })
-      .then(result => sgcloud.log(req, 'task', { result, body, table, reuseCount }))
+      .then(result => sgcloud.log(req, 'task', { result, device, body, table, reuseCount }))
       //  Return the message for the next processing step.
       .then(() => msg)
       .catch((error) => { sgcloud.log(req, 'task', { error, device, body, msg, table }); throw error; });
