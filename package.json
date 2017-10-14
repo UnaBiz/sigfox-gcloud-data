@@ -1,6 +1,6 @@
 {
   "name": "sigfox-gcloud-data",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "sigfox-gcloud adapter for writing Sigfox messages into databases",
   "main": "index.js",
   "scripts": {
