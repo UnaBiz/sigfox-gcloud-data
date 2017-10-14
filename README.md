@@ -6,18 +6,21 @@ You may read and update Sigfox messages with other modules (such as
 before passing to `sigfox-gcloud-data` for writing to the database.
 `sigfox-gcloud-data` works with most SQL databases supported by 
 [Knex.js](http://knexjs.org/)
-like **Postgres, MSSQL, MySQL, MariaDB, SQLite3 and Oracle.**
+like **MySQL, Postgres, MSSQL, MariaDB and Oracle.**
 
 `sigfox-gcloud-data` was built with `sigfox-gcloud`, an open-source software framework for building a
 Sigfox server with Google Cloud Functions and Google Cloud PubSub 
 message queues.  [Check out `sigfox-gcloud`](https://www.npmjs.com/package/sigfox-gcloud)
 
-_`sigfox-gcloud-data` with MySQL:_
+_`sigfox-gcloud-data` with MySQL:_<br>
 [<kbd><img src="https://storage.googleapis.com/unabiz-media/sigfox-gcloud/data-mysql.png" width="800"></kbd>](https://storage.googleapis.com/unabiz-media/sigfox-gcloud/data-mysql.png)
+
+_`sigfox-gcloud-data` with Postgres:_<br>
+[<kbd><img src="https://storage.googleapis.com/unabiz-media/sigfox-gcloud/data-postgres.jpg" width="800"></kbd>](https://storage.googleapis.com/unabiz-media/sigfox-gcloud/data-postgres.png)
 
 # Releases
 
-- **Version 1.0.0** (14 Oct 2017): First release
+- **Version 1.0.1** (14 Oct 2017): Supports multiple instances
 
 # Getting Started
 
@@ -342,3 +345,43 @@ debugging code yourself.
     ```
     
     The other fields of the Sigfox message will be written as well.
+
+# Adding one or more instances of `sendToDatabase`
+
+It's possible to run 2 or more Cloud Functions that will update different databases.
+The Cloud Functions should be named:
+
+```
+sendToDatabase, sendToDatabase2, sendToDatabase3, ...
+```
+
+and the configuration for each function shall be set in the [Google Cloud Metadata](https://console.cloud.google.com/compute/metadata) 
+screen as
+
+```
+sigfox-dbclient, sigfox-dbclient2, sigfox-dbclient3, ...
+``` 
+
+For example, this metadata screen defines 2 databases settings for MySQL and Postgres:
+
+[<kbd><img src="https://storage.googleapis.com/unabiz-media/sigfox-gcloud/data-metadata2.png" width="640"></kbd>](https://storage.googleapis.com/unabiz-media/sigfox-gcloud/data-metadata2.png)
+
+To deploy the second instance of `sendToDatabase`, edit the script `scripts/deploy.sh` 
+and uncomment the second `functiondeploy` so it looks like:
+
+```bash
+./scripts/functiondeploy.sh ${name}2  ${localpath} ${trigger} ${topic}
+```
+
+Run `scripts/deploy.sh`.  This will deploy a new function `sendToDatabase2` that uses the second database setting
+in the Google Cloud Metadata screen.
+
+To deploy `sendToDatabase3`, `sendToDatabase4`, ... you may edit `scripts/deploy.sh` accordingly:
+
+```bash
+./scripts/functiondeploy.sh ${name}3  ${localpath} ${trigger} ${topic}
+./scripts/functiondeploy.sh ${name}4  ${localpath} ${trigger} ${topic}
+```
+
+Note that all instances of `sendToDatabase` will read Sigfox messages from the `sigfox.types.sendToDatabase` queue simultaneously.
+The database updates will run in parallel.

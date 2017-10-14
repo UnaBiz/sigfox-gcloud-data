@@ -23,6 +23,8 @@ let testDatabaseConfig = null;
 let testDB = null;
 
 /* eslint-disable quotes, max-len */
+const testInstance = null;  //  Simulates sendToDatabase
+// const testInstance = '2';  //  Simulates sendToDatabase2
 const testDevice1 = 'UNITTEST1';
 
 const testData = {  //  Structured msgs with numbers and text fields.
@@ -94,8 +96,8 @@ describe(moduleName, () => {
   });
 
   it.skip('should set up google-credentials.json', () => {
-    const creds = fs.readFileSync('./google-credentials.bak');
-    fs.writeFileSync('./google-credentials.json', creds);
+    const creds0 = fs.readFileSync('./google-credentials.bak');
+    fs.writeFileSync('./google-credentials.json', creds0);
     return Promise.resolve('OK');
   });
 
@@ -103,7 +105,8 @@ describe(moduleName, () => {
     //  Get the config from Google Compute Metadata.
     const promise = moduleTested.getMetadataConfig(req,
       moduleTested.metadataPrefix,
-      moduleTested.metadataKeys)
+      moduleTested.metadataKeys,
+      testInstance)
       .then((result) => {
         common.log(req, 'unittest', { result });
         testMetadata = result;
@@ -121,7 +124,7 @@ describe(moduleName, () => {
 
   it('should get database config', () => {
     //  Get the database config from Google Compute Metadata.
-    const promise = moduleTested.getDatabaseConfig(req)
+    const promise = moduleTested.getDatabaseConfig(req, false, testInstance)
       .then((result) => {
         common.log(req, 'unittest', { result });
         testDatabaseConfig = result;
@@ -155,7 +158,7 @@ describe(moduleName, () => {
     ]);
   });
 
-  it.skip('should create sensor table', () => {
+  it('should create sensor table', () => {
     //  Create the sensordata table.
     const promise = moduleTested.createTable(req)
       .then((result) => {
@@ -194,8 +197,8 @@ describe(moduleName, () => {
   });
 
   it('should delete google-credentials.json', () => {
-    const creds = fs.readFileSync('./google-credentials.json');
-    fs.writeFileSync('./google-credentials.bak', creds);
+    const creds0 = fs.readFileSync('./google-credentials.json');
+    fs.writeFileSync('./google-credentials.bak', creds0);
     fs.unlink('./google-credentials.json');
     return Promise.resolve('OK');
   });

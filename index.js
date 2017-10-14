@@ -8,15 +8,12 @@
 
 /* eslint-disable camelcase, no-console, no-nested-ternary, import/no-dynamic-require,
  import/newline-after-import, import/no-unresolved, global-require, max-len */
-//  Enable DNS cache in case we hit the DNS quota for Google Cloud Functions.
-require('dnscache')({ enable: true });
+require('dnscache')({ enable: true });  //  Enable DNS cache in case we hit the DNS quota for Google Cloud Functions.
 process.on('uncaughtException', err => console.error(err.message, err.stack));  //  Display uncaught exceptions.
-if (process.env.FUNCTION_NAME) {
-  //  Load the Google Cloud Trace and Debug Agents before any require().
-  //  Only works in Cloud Function.
-  require('@google-cloud/trace-agent').start();
-  require('@google-cloud/debug-agent').start();
-}
+//  Load the Google Cloud Trace and Debug Agents before any require().  Only works in Cloud Function.
+if (process.env.FUNCTION_NAME) require('@google-cloud/trace-agent').start();
+if (process.env.FUNCTION_NAME) require('@google-cloud/debug-agent').start();
+
 //  We use KNEX library to support many types of databases.
 //  Remember to install any needed database clients e.g. "mysql", "pg"
 const knex = require('knex');
@@ -28,6 +25,8 @@ const knex = require('knex');
 //  Begin Message Processing Code
 
 //  Our database settings are stored in the Google Cloud Metadata store under this prefix.
+//  If there are multiple instances of this function e.g. sendToDatabase2, sendToDatabase3, ...
+//  we will add a instance suffix e.g. sigfox-dbclient2, sigfox-dbclient3, ...
 const metadataPrefix = 'sigfox-db';
 const metadataKeys = {   //  Keys we use and their default values, before prepending metadataPrefix.
   client: null,          //  Database client to be used e.g mysql. Must be installed from npm.
@@ -37,7 +36,7 @@ const metadataKeys = {   //  Keys we use and their default values, before prepen
   name: 'sigfox',        //  Name of the database, e.g. sigfox
   table: 'sensordata',   //  Name of the table to store sensor data e.g. sensordata
   version: null,         //  Version number of database, used only by Postgres e.g. 7.2
-  id: 'uuid',            //  Name of the ID field in the table e.g. uuid
+  id: 'uuid',            //  Name of the ID field in the table, e.g. uuid
 };
 
 //  Default fields to be created in sensordata table. Format: fieldname, indexed?, comment
@@ -81,14 +80,32 @@ function wrap() {
   const sgcloud = require('sigfox-gcloud'); //  sigfox-gcloud Framework
   const googlemetadata = require('sigfox-gcloud/lib/google-metadata');  //  For accessing Google Metadata.
 
-  function getMetadataConfig(req, metadataPrefix0, metadataKeys0) {
+  function getInstance(name) {
+    //  Given a function name like "func123", return the suffix number "123".
+    let num = '';
+    //  Walk backwards from the last char. Stop when we find a non-digit.
+    for (let i = name.length - 1; i >= 0; i -= 1) {
+      const ch = name[i];
+      if (ch < '0' || ch > '9') break;
+      num = ch + num;
+    }
+    return num;
+  }
+
+  function getMetadataConfig(req, metadataPrefix0, metadataKeys0, instance0) {
     //  Fetch the metadata config from the Google Cloud Metadata store.  metadataPrefix is the common
     //  prefix for all config keys, e.g. "sigfox-db".  metadataKeys is a map of the key suffix
     //  and the default values.  Returns a promise for the map of metadataKeys to values.
     //  We use the Google Cloud Metadata store because it has an editing screen and is easier
-    //  to deploy, compared to a config file.
+    //  to deploy, compared to a config file. instance0 is used for unit test.
     if (getMetadataConfigPromise) return getMetadataConfigPromise;  //  Return the cache.
-    sgcloud.log(req, 'getMetadataConfig', { metadataPrefix0, metadataKeys0 });
+    //  Find the instance number based on the function name
+    //  e.g. sendToDatabase123 will be instance 123. Then we will get metadata
+    //  sigfox-dbclient123, ....
+    const instance = instance0 || (
+      sgcloud.functionName ? getInstance(sgcloud.functionName) : ''
+    );
+    sgcloud.log(req, 'getMetadataConfig', { metadataPrefix0, metadataKeys0, instance });
     let authClient = null;
     let metadata = null;
     //  Get a Google auth client.
@@ -103,27 +120,27 @@ function wrap() {
         //  Hunt for the metadata keys in the metadata object and copy them.
         const config = Object.assign({}, metadataKeys0);
         for (const configKey of Object.keys(config)) {
-          const metadataKey = metadataPrefix0 + configKey;
+          const metadataKey = metadataPrefix0 + configKey + instance;
           if (metadata[metadataKey] !== null && metadata[metadataKey] !== undefined) {
             //  Copy the non-null values.
             config[configKey] = metadata[metadataKey];
           }
         }
         const result = config;
-        sgcloud.log(req, 'getMetadataConfig', { result, metadataPrefix0, metadataKeys0 });
+        sgcloud.log(req, 'getMetadataConfig', { result, metadataPrefix0, metadataKeys0, instance });
         return result;
       })
       .catch((error) => {
-        sgcloud.log(req, 'getMetadataConfig', { error, metadataPrefix0, metadataKeys0 });
+        sgcloud.log(req, 'getMetadataConfig', { error, metadataPrefix0, metadataKeys0, instance });
         throw error;
       });
     return getMetadataConfigPromise;
   }
 
-  function getDatabaseConfig(req, reload) {
+  function getDatabaseConfig(req, reload, instance) {
     //  Return the database connection config from the Google Cloud Metadata store.
     //  Set the global db with the KNEX object and tableInfo with the sensor table info.
-    //  Return the cached connection unless reload is true.
+    //  Return the cached connection unless reload is true.  instance is used for unit test.
     //  Returns a promise.
     let metadata = null;
     let dbconfig = null;
@@ -132,11 +149,12 @@ function wrap() {
       return getDatabaseConfigPromise;
     }
     reuseCount = 0;
-    getDatabaseConfigPromise = getMetadataConfig(req, metadataPrefix, metadataKeys)
+    getDatabaseConfigPromise = getMetadataConfig(req,
+      metadataPrefix, metadataKeys, instance)
       .then((res) => { metadata = res; })
       .then(() => {
         dbconfig = {
-          client: metadata.client,  //  e.g. 'pg'
+          client: metadata.client,
           connection: {
             host: metadata.host,
             user: metadata.user,
