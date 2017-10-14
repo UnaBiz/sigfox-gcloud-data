@@ -12,6 +12,9 @@ like **Postgres, MSSQL, MySQL, MariaDB, SQLite3 and Oracle.**
 Sigfox server with Google Cloud Functions and Google Cloud PubSub 
 message queues.  [Check out `sigfox-gcloud`](https://www.npmjs.com/package/sigfox-gcloud)
 
+_`sigfox-gcloud-data` with MySQL:_
+[<kbd><img src="https://storage.googleapis.com/unabiz-media/sigfox-gcloud/data-mysql.png" width="800"></kbd>](https://storage.googleapis.com/unabiz-media/sigfox-gcloud/data-mysql.png)
+
 # Releases
 
 - **Version 1.0.0** (14 Oct 2017): First release
