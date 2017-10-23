@@ -1,6 +1,6 @@
 {
   "name": "sigfox-gcloud-data",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "sigfox-gcloud adapter for writing Sigfox messages into databases",
   "main": "index.js",
   "scripts": {
@@ -44,7 +44,7 @@
     "node-fetch": "^1.6.3",
     "pg": "^7.3.0",
     "safe-buffer": "5.0.1",
-    "sigfox-gcloud": "^1.0.2"
+    "sigfox-gcloud": "^1.0.3"
   },
   "devDependencies": {
     "chai": "^3.5.0",
