@@ -1,7 +1,7 @@
-//  Google Cloud Function sendToUbidots is triggered when a
+//  Google Cloud Function sendToDatabase is triggered when a
 //  Sigfox message is sent to the PubSub message queue
-//  sigfox.types.sendToUbidots.
-//  We call the Ubidots API to send the Sigfox message to Ubidots.
+//  sigfox.types.sendToDatabase.
+//  We call the Knex library to record the message in the SQL database.
 
 //  //////////////////////////////////////////////////////////////////////////////////////////
 //  Begin Common Declarations
@@ -79,6 +79,7 @@ function wrap() {
   //  Wrap the module into a function so that all Google Cloud resources are properly disposed.
   const sgcloud = require('sigfox-gcloud'); //  sigfox-gcloud Framework
   const googlemetadata = require('sigfox-gcloud/lib/google-metadata');  //  For accessing Google Metadata.
+  let wrapCount = 0;
 
   function getInstance(name) {
     //  Given a function name like "func123", return the suffix number "123".
@@ -145,10 +146,10 @@ function wrap() {
     let metadata = null;
     let dbconfig = null;
     if (getDatabaseConfigPromise && !reload) {
-      reuseCount += 1;
+      reuseCount += 1; wrapCount += 1;
       return getDatabaseConfigPromise;
     }
-    reuseCount = 0;
+    reuseCount = 0; wrapCount = 0;
     getDatabaseConfigPromise = getMetadataConfig(req,
       metadataPrefix, metadataKeys, instance)
       .then((res) => { metadata = res; })
@@ -265,7 +266,7 @@ function wrap() {
         //  Insert the record.
         return db(table).insert(body);
       })
-      .then(result => sgcloud.log(req, 'task', { result, device, body, table, reuseCount }))
+      .then(result => sgcloud.log(req, 'task', { result, device, body, table, reuseCount, wrapCount }))
       //  Return the message for the next processing step.
       .then(() => msg)
       .catch((error) => { sgcloud.log(req, 'task', { error, device, body, msg, table }); throw error; });
@@ -290,10 +291,18 @@ function wrap() {
 //  //////////////////////////////////////////////////////////////////////////////////////////
 //  Main Function
 
+const wrapper2 = wrap();
+
 module.exports = {
   //  Expose these functions to be called by Google Cloud Function.
-
+  //  eslint-disable-next-line arrow-body-style
   main: (event) => {
+    return wrapper2.serveQueue(event)
+      //  Suppress the error or Google Cloud will call the function again.
+      .catch(error => error);
+  },
+
+  /* main: (event) => {
     //  Create a wrapper and serve the PubSub event.
     let wrapper = wrap();
     return wrapper.serveQueue(event)
@@ -301,7 +310,7 @@ module.exports = {
       .then((result) => { wrapper = null; return result; })
       //  Suppress the error or Google Cloud will call the function again.
       .catch((error) => { wrapper = null; return error; });
-  },
+  }, */
 
   //  For unit test only.
   task: wrap().task,
